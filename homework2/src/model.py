@@ -22,14 +22,15 @@ from sklearn.metrics import (
 from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.tree import plot_tree
 
 # Set plotting style
 sns.set_style("whitegrid")
 
-
 class GradientBoostingModel:
     """Gradient Boosting model implementation with comprehensive evaluation and analysis tools"""
 
+    #---------------------------------------------------------------------------------------------------------
     def __init__(
         self,
         task: str = "classification",
@@ -78,6 +79,8 @@ class GradientBoostingModel:
         self.use_scaler = use_scaler
         self.scaler = StandardScaler() if use_scaler else None
 
+    #---------------------------------------------------------------------------------------------------------
+
     def train_test_split(
         self,
         X: pd.DataFrame,
@@ -98,7 +101,14 @@ class GradientBoostingModel:
             X_train, X_test, y_train, y_test: Split datasets
         """
         # TODO: Implement train/test split and track feature names
-        pass
+
+        self.feature_names = X.columns.tolist()
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state
+        )
+        return X_train, X_test, y_train, y_test
+
+    #---------------------------------------------------------------------------------------------------------
 
     def fit(self, X_train: pd.DataFrame, y_train: pd.Series, verbose: bool = True):
         """
@@ -113,7 +123,20 @@ class GradientBoostingModel:
             self: Trained model instance
         """
         # TODO: Create classifier/regressor based on task and fit it
-        pass
+        if self.task == "classification":
+            print("Training Gradient Boosting Classifier with parameters: {}".format(self.params)) if verbose else None
+            self.model = GradientBoostingClassifier(**self.params)
+        else:
+            print("Training Gradient Boosting Regressor with parameters: {}".format(self.params)) if verbose else None
+            self.model = GradientBoostingRegressor(**self.params)
+
+        if self.use_scaler:
+            X_train = self.scaler.fit_transform(X_train)
+        self.model.fit(X_train, y_train)
+
+        return self
+
+    #---------------------------------------------------------------------------------------------------------
 
     def predict(
         self, X: pd.DataFrame, return_proba: bool = False
@@ -129,8 +152,15 @@ class GradientBoostingModel:
             Predictions or probability estimates
         """
         # TODO: Apply scaler when enabled, then predict
-        pass
+        if self.use_scaler:
+            X = self.scaler.transform(X)
 
+        if return_proba and self.task == "classification":
+            return self.model.predict_proba(X)
+        return self.model.predict(X)
+
+    #---------------------------------------------------------------------------------------------------------
+    
     def evaluate(self, X_test: pd.DataFrame, y_test: pd.Series) -> Dict:
         """
         Evaluate model performance on test data
@@ -142,20 +172,28 @@ class GradientBoostingModel:
         Returns:
             Dictionary of evaluation metrics
         """
-
-        # TODO: Compute metrics (classification vs regression)
+        y_pred = self.predict(X_test)
+        print("Evaluating model performance for task: {}".format(self.task))
+        print(self.task)
         if self.task == "classification":
             metrics = {
-                "accuracy": None,
-                "precision": None,
-                "recall": None,
-                "f1": None,
-                "roc_auc": None,
+                "accuracy": accuracy_score(X_test, y_pred),
+                "precision": precision_score(y_test, y_pred, average="weighted"),
+                "recall": recall_score(y_test, y_pred, average="weighted"),
+                "f1": f1_score(y_test, y_pred, average="weighted"),
+                "roc_auc": roc_auc_score(y_test, y_pred, multi_class="ovr"),
             }
         else:
-            metrics = {"rmse": None, "mae": None, "r2": None}
+            metrics = {
+
+                "rmse": mean_squared_error(y_test, y_pred),
+                "mae": mean_absolute_error(y_test, y_pred),
+                "r2": r2_score(y_test, y_pred),
+            }
 
         return metrics
+
+    #---------------------------------------------------------------------------------------------------------
 
     def cross_validate(
         self,
@@ -175,17 +213,36 @@ class GradientBoostingModel:
             Dictionary of cross-validation results using sklearn cross_val_score
         """
         # TODO: Use Pipeline when scaling, and choose classifier/regressor based on task
-        model = None
+        if self.use_scaler:
+            model = Pipeline([
+                ("scaler", StandardScaler()),
+                ("classifier" if self.task == "classification" else "regressor", GradientBoostingClassifier(**self.params) if self.task == "classification" else GradientBoostingRegressor(**self.params))
+            ])
+        else:
+            model = GradientBoostingClassifier(**self.params) if self.task == "classification" else GradientBoostingRegressor(**self.params)
 
         # TODO: Choose scoring metrics based on classification vs regression
         if self.task == "classification":
-            scoring = ["accuracy", "precision", "recall", "f1", "roc_auc"]
+            model = Pipeline([
+                ("scaler", StandardScaler()),
+                ("classifier", GradientBoostingClassifier(**self.params))
+            ])
         else:
-            scoring = ["neg_mean_squared_error", "neg_mean_absolute_error", "r2"]
+            model = Pipeline([
+                ("scaler", StandardScaler()),
+                ("regressor", GradientBoostingRegressor(**self.params))
+            ])
+
+        scoring = ["accuracy", "precision", "recall", "f1", "roc_auc"] if self.task == "classification" else ["neg_mean_squared_error", "neg_mean_absolute_error", "r2"]
 
         results = {}
         # TODO: Get mean, stdev of cross_val_score for each metric
-        pass
+        for metric in scoring:
+            scores = cross_val_score(model, X, y, cv=cv, scoring=metric)
+            results[metric] = {"mean": scores.mean(), "std": scores.std()}
+        return results
+
+    #---------------------------------------------------------------------------------------------------------
 
     def get_feature_importance(
         self, plot: bool = False, top_n: int = 20
@@ -198,7 +255,22 @@ class GradientBoostingModel:
         """
 
         # TODO: Optionally plot a bar chart of top_n feature importances
-        pass
+        if plot:
+            import matplotlib.pyplot as plt
+
+            feature_importances = self.model.feature_importances_
+            indices = np.argsort(feature_importances)[::-1][:top_n]
+
+            plt.figure(figsize=(12, 6))
+            plt.title("Top {} Feature Importances".format(top_n))
+            plt.bar(range(top_n), feature_importances[indices], align="center")
+            plt.xticks(range(top_n), self.feature_names[indices], rotation=90)
+            plt.xlim([-1, top_n])
+            plt.show()
+
+        return pd.DataFrame({"feature": self.feature_names, "importance": self.model.feature_importances_})
+
+    #---------------------------------------------------------------------------------------------------------
 
     def tune_hyperparameters(
         self,
@@ -222,13 +294,26 @@ class GradientBoostingModel:
             Dictionary with best parameters and results
         """
         # TODO: Choose classifier or regressor based on task
-        model = None
+        self.model = Pipeline([
+            ("scaler", StandardScaler()),
+            ("model", GradientBoostingClassifier(**self.params) if self.task == "classification" else GradientBoostingRegressor(**self.params)),
+        ])
 
         # TODO: Initialize GridSearchCV
-        grid_search = None
+        grid_search = GridSearchCV(estimator=self.model, param_grid=param_grid, cv=cv, scoring=scoring)
 
         # TODO: Perform grid search for hyperparameter tuning
-        pass
+        grid_search.fit(X, y)
+
+        self.params= grid_search.best_params_
+
+        return {
+            "best_params": grid_search.best_params_,
+            "best_score": grid_search.best_score_,
+            "cv_results": grid_search.cv_results_
+        }
+
+    #---------------------------------------------------------------------------------------------------------
 
     def plot_tree(
         self, tree_index: int = 0, figsize: Tuple[int, int] = (20, 15)
@@ -240,5 +325,7 @@ class GradientBoostingModel:
             tree_index: Index of the tree to plot
             figsize: Figure size for the plot
         """
-
-        pass
+        plt.figure(figsize=figsize)
+        plot_tree(self.model.estimators_[tree_index], filled=True, feature_names=self.feature_names)
+        plt.title("Tree {}".format(tree_index))
+        plt.show()

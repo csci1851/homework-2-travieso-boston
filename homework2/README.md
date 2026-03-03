@@ -1,4 +1,4 @@
-# Homework 2: Gradient Boosting Methods
+w# Homework 2: Gradient Boosting Methods
 
 ## Overview
 In this homework, you will work with two datasets to explore gradient boosting and the underlying decision trees that power some of them. 
